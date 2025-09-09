@@ -21,6 +21,8 @@ RUN_CONFIG?=examples/local/otel-config.yaml
 CONTRIB_PATH=$(CURDIR)/../opentelemetry-collector-contrib
 COMP_REL_PATH=cmd/otelcorecol/components.go
 MOD_NAME=go.opentelemetry.io/collector
+AZUREGIGWARM ?= 0
+RUST_GIGWARM_DIR=exporter/azuregigwarmexporter/geneva_ffi_bridge
 
 # Function to execute a command. Note the empty line before endef to make sure each command
 # gets executed separately instead of concatenated with previous one.
@@ -156,7 +158,12 @@ endif
 # Build the Collector executable.
 .PHONY: otelcorecol
 otelcorecol:
+ifeq ($(AZUREGIGWARM),1)
+	$(MAKE) gigwarm-rust
+	pushd cmd/otelcorecol && CGO_ENABLED=1 $(GOCMD) build -trimpath -o ../../bin/otelcorecol_$(GOOS)_$(GOARCH) -tags "grpcnotrace" ./... && popd
+else
 	pushd cmd/otelcorecol && CGO_ENABLED=0 $(GOCMD) build -trimpath -o ../../bin/otelcorecol_$(GOOS)_$(GOARCH) -tags "grpcnotrace" ./... && popd
+endif
 
 .PHONY: genotelcorecol
 genotelcorecol: install-tools
@@ -471,4 +478,13 @@ gengithub: $(GITHUBGEN) generate-codeowners generate-gh-issue-templates
 
 .PHONY: gendistributions
 gendistributions: $(GITHUBGEN)
-	$(GITHUBGEN) distributions
+$(GITHUBGEN) distributions
+
+# Azure GigWarm exporter (Rust FFI) targets
+.PHONY: gigwarm-rust
+gigwarm-rust:
+	cargo build --release --manifest-path $(RUST_GIGWARM_DIR)/Cargo.toml
+
+.PHONY: otelcorecol-gigwarm
+otelcorecol-gigwarm:
+	$(MAKE) otelcorecol AZUREGIGWARM=1

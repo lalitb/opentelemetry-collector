@@ -1,0 +1,15 @@
+[package]
+name = "geneva-ffi-bridge"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+geneva-uploader-ffi = "0.1.0"
+
+[features]
+default = []
+mock_auth = ["geneva-uploader-ffi/mock_auth"]
+
