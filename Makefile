@@ -478,7 +478,7 @@ gengithub: $(GITHUBGEN) generate-codeowners generate-gh-issue-templates
 
 .PHONY: gendistributions
 gendistributions: $(GITHUBGEN)
-$(GITHUBGEN) distributions
+	$(GITHUBGEN) distributions
 
 # Azure GigWarm exporter (Rust FFI) targets
 .PHONY: gigwarm-rust
