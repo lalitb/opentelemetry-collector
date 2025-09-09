@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package azuregigwarmexporter // import "dev.azure.com/msazure/one/_git/strato.git/exporter/azuregigwarmexporter"
+package azuregigwarmexporter // import "go.opentelemetry.io/collector/exporter/azuregigwarmexporter"
 
 import (
 	"errors"

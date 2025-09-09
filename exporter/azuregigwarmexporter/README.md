@@ -56,7 +56,7 @@ service:
 ./bin/otelcorecol_$(go env GOOS)_$(go env GOARCH) --config examples/local/otel-gigwarm.yaml
 ```
 
-(If the dynamic library cannot be found at runtime, export DYLD_LIBRARY_PATH or LD_LIBRARY_PATH pointing to `exporter/azuregigwarmexporter/geneva_ffi_bridge/target/release`.)
+Static linking: the Rust FFI library is statically linked into the collector binary by default, so no DYLD_LIBRARY_PATH / LD_LIBRARY_PATH adjustments are required. (Dynamic linking is only needed if you deliberately change `geneva_ffi.go` to reference the `.dylib` explicitly.)
 
 ## Send a Test Log
 

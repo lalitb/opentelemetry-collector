@@ -9,10 +9,10 @@ import (
 	"context"
 	"fmt"
 
-	cgogeneva "dev.azure.com/msazure/one/_git/strato.git/exporter/azuregigwarmexporter/internal/cgo"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
+	cgogeneva "go.opentelemetry.io/collector/exporter/azuregigwarmexporter/internal/cgo"
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/plog/plogotlp"
 	"go.uber.org/zap"

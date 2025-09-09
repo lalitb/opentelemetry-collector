@@ -2,7 +2,7 @@
 
 module go.opentelemetry.io/collector/cmd/otelcorecol
 
-go 1.24
+go 1.24.4
 
 require (
 	go.opentelemetry.io/collector/component v1.41.0
@@ -15,6 +15,7 @@ require (
 	go.opentelemetry.io/collector/connector v0.135.0
 	go.opentelemetry.io/collector/connector/forwardconnector v0.135.0
 	go.opentelemetry.io/collector/exporter v0.135.0
+	go.opentelemetry.io/collector/exporter/azuregigwarmexporter v0.0.0
 	go.opentelemetry.io/collector/exporter/debugexporter v0.135.0
 	go.opentelemetry.io/collector/exporter/nopexporter v0.135.0
 	go.opentelemetry.io/collector/exporter/otlpexporter v0.135.0
@@ -329,3 +330,5 @@ replace go.opentelemetry.io/collector/receiver/xreceiver => ../../receiver/xrece
 replace go.opentelemetry.io/collector/service => ../../service
 
 replace go.opentelemetry.io/collector/service/hostcapabilities => ../../service/hostcapabilities
+
+replace go.opentelemetry.io/collector/exporter/azuregigwarmexporter => ../../exporter/azuregigwarmexporter
