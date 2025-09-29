@@ -66,4 +66,32 @@ Using [otel-cli](https://github.com/equinix-labs/otel-cli):
 otel-cli --endpoint localhost:4317 --otlp-insecure logs --body "hello gigwarm" --severity INFO
 ```
 
+## Send Test Spans
+
+Using [otel-cli](https://github.com/equinix-labs/otel-cli):
+
+```bash
+otel-cli --endpoint localhost:4317 --otlp-insecure span --name "test-span" --service "my-service"
+```
+
+To send a span with additional attributes:
+
+```bash
+otel-cli --endpoint localhost:4317 --otlp-insecure span \
+  --name "test-span" \
+  --service "my-service" \
+  --attrs "http.method=GET,http.url=/api/test"
+```
+
+Note: To enable span export, update the collector config to include a `traces` pipeline:
+
+```yaml
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [azuregigwarm]
+```
+
 If configuration values are missing the exporter will emit validation errors on startup.
