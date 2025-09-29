@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
-geneva-uploader-ffi = "0.1.0"
+geneva-uploader-ffi = "0.2.0"
 
 [features]
 default = []

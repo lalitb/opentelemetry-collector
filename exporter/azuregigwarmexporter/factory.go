@@ -34,6 +34,7 @@ func NewFactory() exporter.Factory {
 		Type,
 		f.createDefaultConfig,
 		exporter.WithLogs(f.createLogsExporter, stability),
+		exporter.WithTraces(f.createTracesExporter, stability),
 	)
 }
 
@@ -50,6 +51,22 @@ func (f *factory) createLogsExporter(ctx context.Context, set exporter.Settings,
 	}
 
 	exp, err := newLogsExporter(ctx, set, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return the exporter directly without using exporterhelper
+	return exp, nil
+}
+
+// createTracesExporter creates a traces exporter based on the config.
+func (f *factory) createTracesExporter(ctx context.Context, set exporter.Settings, c component.Config) (exporter.Traces, error) {
+	cfg, ok := c.(*Config)
+	if !ok {
+		return nil, errUnexpectedConfigurationType
+	}
+
+	exp, err := newTracesExporter(ctx, set, cfg)
 	if err != nil {
 		return nil, err
 	}

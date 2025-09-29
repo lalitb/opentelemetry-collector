@@ -242,6 +242,27 @@ func (c *GenevaClient) EncodeAndCompressLogs(data []byte) (*EncodedBatches, erro
 	return &EncodedBatches{handle: batches}, nil
 }
 
+// EncodeAndCompressSpans uses FFI to create compressed span batches for upload.
+func (c *GenevaClient) EncodeAndCompressSpans(data []byte) (*EncodedBatches, error) {
+	if c.handle == nil {
+		return nil, errors.New("geneva client is closed")
+	}
+	if len(data) == 0 {
+		return nil, errors.New("empty span data")
+	}
+	var batches *C.EncodedBatchesHandle
+	rc := C.geneva_encode_and_compress_spans(
+		c.handle,
+		(*C.uint8_t)(unsafe.Pointer(&data[0])),
+		C.size_t(len(data)),
+		&batches,
+	)
+	if rc != C.GENEVA_SUCCESS {
+		return nil, mapGenevaError(rc)
+	}
+	return &EncodedBatches{handle: batches}, nil
+}
+
 // UploadBatch uploads a single batch index synchronously.
 func (c *GenevaClient) UploadBatch(b *EncodedBatches, idx int) error {
 	if c.handle == nil {
