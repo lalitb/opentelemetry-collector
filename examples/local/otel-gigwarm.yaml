@@ -6,20 +6,20 @@ receivers:
 
 exporters:
   azuregigwarm:
-    endpoint: https://YOUR_GENEVA_ENDPOINT
-    environment: prod
-    account: your_account
-    namespace: your_namespace
-    region: westus2
-    config_major_version: 1
-    auth_method: 0          # 0=msi, 1=certificate
-    tenant: your_tenant
-    role_name: your_role
-    role_instance: instance-1
+    endpoint: https://gcs.ppe.monitoring.core.windows.net
+    environment: test
+    account: PipelineAgent2Demo
+    namespace: PAdemo2
+    region: eastus
+    config_major_version: 2
+    auth_method: 1          # 0=msi, 1=certificate
+    tenant: test-tenant
+    role_name: test-role
+    role_instance: test-role-instance
     # For certificate auth:
     # auth_method: 1
-    # cert_path: /path/to/cert.pfx
-    # cert_password: secret
+    cert_path: /tmp/client.p12
+    cert_password: password
 
 processors:
   batch:
@@ -27,6 +27,10 @@ processors:
 service:
   pipelines:
     logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [azuregigwarm]
+    traces:
       receivers: [otlp]
       processors: [batch]
       exporters: [azuregigwarm]

@@ -1,6 +1,6 @@
 # Azure GigWarm Exporter (Experimental)
 
-Minimal instructions to build and test the Azure GigWarm (Geneva Warm) logs exporter that uses a Rust FFI bridge.
+Minimal instructions to build and test the Azure GigWarm (Geneva Warm) spans and logs exporter that uses a Rust FFI bridge.
 
 ## Build (enable exporter)
 
@@ -44,6 +44,10 @@ processors:
 
 service:
   pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [azuregigwarm]
     logs:
       receivers: [otlp]
       processors: [batch]
@@ -58,40 +62,40 @@ service:
 
 Static linking: the Rust FFI library is statically linked into the collector binary by default, so no DYLD_LIBRARY_PATH / LD_LIBRARY_PATH adjustments are required. (Dynamic linking is only needed if you deliberately change `geneva_ffi.go` to reference the `.dylib` explicitly.)
 
-## Send a Test Log
+## Send Test Data
 
-Using [otel-cli](https://github.com/equinix-labs/otel-cli):
+Using [telemetrygen](https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/cmd/telemetrygen):
 
 ```bash
-otel-cli --endpoint localhost:4317 --otlp-insecure logs --body "hello gigwarm" --severity INFO
+# Generate test traces/spans
+telemetrygen traces --otlp-endpoint localhost:4317 --otlp-insecure
+
+# Generate traces with custom configuration
+telemetrygen traces \
+  --otlp-endpoint localhost:4317 \
+  --otlp-insecure \
+  --traces 10 \
+  --telemetry-attributes "service.name=my-service"
+
+# Generate test logs
+telemetrygen logs --otlp-endpoint localhost:4317 --otlp-insecure
+
+# Generate logs with custom configuration
+telemetrygen logs \
+  --otlp-endpoint localhost:4317 \
+  --otlp-insecure \
+  --logs 10 \
+  --body "test log message"
 ```
 
-## Send Test Spans
-
-Using [otel-cli](https://github.com/equinix-labs/otel-cli):
+Alternatively, using [otel-cli](https://github.com/equinix-labs/otel-cli):
 
 ```bash
+# Send a test span
 otel-cli --endpoint localhost:4317 --otlp-insecure span --name "test-span" --service "my-service"
-```
 
-To send a span with additional attributes:
-
-```bash
-otel-cli --endpoint localhost:4317 --otlp-insecure span \
-  --name "test-span" \
-  --service "my-service" \
-  --attrs "http.method=GET,http.url=/api/test"
-```
-
-Note: To enable span export, update the collector config to include a `traces` pipeline:
-
-```yaml
-service:
-  pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch]
-      exporters: [azuregigwarm]
+# Send a test log
+otel-cli --endpoint localhost:4317 --otlp-insecure logs --body "hello gigwarm" --severity INFO
 ```
 
 If configuration values are missing the exporter will emit validation errors on startup.
