@@ -8,9 +8,9 @@ package azuregigwarmexporter
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
 	cgogeneva "go.opentelemetry.io/collector/exporter/azuregigwarmexporter/internal/cgo"
 	"go.opentelemetry.io/collector/pdata/ptrace"
@@ -26,8 +26,8 @@ type tracesExporter struct {
 	logger *zap.Logger
 }
 
-var _ consumer.Traces = (*tracesExporter)(nil)
-var _ component.Component = (*tracesExporter)(nil)
+// tracesExporter no longer needs to implement consumer.Traces or component.Component
+// because exporterhelper handles those interfaces
 
 // newTracesExporter creates a new GigWarm traces exporter.
 func newTracesExporter(_ context.Context, set exporter.Settings, cfg *Config) (*tracesExporter, error) {
@@ -90,8 +90,8 @@ func (e *tracesExporter) shutdown(_ context.Context) error {
 	return nil
 }
 
-// consumeTraces implements consumer.ConsumeTracesFunc signature and sends traces via Rust FFI.
-func (e *tracesExporter) consumeTraces(_ context.Context, td ptrace.Traces) error {
+// pushTraces implements the push function for exporterhelper and sends traces via Rust FFI.
+func (e *tracesExporter) pushTraces(_ context.Context, td ptrace.Traces) error {
 	// Marshal to OTLP ExportTraceServiceRequest protobuf bytes
 	req := ptraceotlp.NewExportRequestFromTraces(td)
 	data, err := req.MarshalProto()
@@ -108,11 +108,28 @@ func (e *tracesExporter) consumeTraces(_ context.Context, td ptrace.Traces) erro
 	defer batches.Close()
 
 	n := batches.Len()
+
+	// Upload batches concurrently for better throughput
+	errChan := make(chan error, n)
+	var wg sync.WaitGroup
+
 	for i := 0; i < n; i++ {
-		if err := e.client.UploadBatch(batches, i); err != nil {
-			e.logger.Error("Failed to upload batch to Geneva Warm", zap.Int("batch_index", i), zap.Error(err))
-			return fmt.Errorf("failed to upload spans batch to Geneva Warm: %w", err)
-		}
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			if err := e.client.UploadBatch(batches, index); err != nil {
+				e.logger.Error("Failed to upload batch to Geneva Warm", zap.Int("batch_index", index), zap.Error(err))
+				errChan <- fmt.Errorf("failed to upload spans batch %d to Geneva Warm: %w", index, err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	// Check for any errors
+	if err := <-errChan; err != nil {
+		return err
 	}
 
 	e.logger.Debug("Successfully uploaded spans to Geneva Warm",
@@ -122,22 +139,5 @@ func (e *tracesExporter) consumeTraces(_ context.Context, td ptrace.Traces) erro
 	return nil
 }
 
-// Capabilities implements consumer.Traces.
-func (e *tracesExporter) Capabilities() consumer.Capabilities {
-	return consumer.Capabilities{MutatesData: false}
-}
-
-// ConsumeTraces implements consumer.Traces.
-func (e *tracesExporter) ConsumeTraces(ctx context.Context, td ptrace.Traces) error {
-	return e.consumeTraces(ctx, td)
-}
-
-// Start implements component.Component.
-func (e *tracesExporter) Start(ctx context.Context, host component.Host) error {
-	return e.start(ctx, host)
-}
-
-// Shutdown implements component.Component.
-func (e *tracesExporter) Shutdown(ctx context.Context) error {
-	return e.shutdown(ctx)
-}
+// These interface methods are no longer needed because exporterhelper wraps the exporter
+// and handles the consumer.Traces and component.Component interfaces

@@ -19,6 +19,8 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configretry"
+	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 // AuthMethod represents the authentication method for Geneva Warm
@@ -62,6 +64,12 @@ type Config struct {
 	// Certificate auth parameters (optional; required only when AuthMethod == Certificate)
 	CertPath     string `mapstructure:"cert_path"`
 	CertPassword string `mapstructure:"cert_password"`
+
+	// QueueConfig configures the sending queue for the exporter
+	QueueConfig exporterhelper.QueueBatchConfig `mapstructure:"sending_queue"`
+
+	// RetryConfig configures retry behavior for failed exports
+	RetryConfig configretry.BackOffConfig `mapstructure:"retry_on_failure"`
 
 	// prevent unkeyed literal initialization
 	_ struct{}

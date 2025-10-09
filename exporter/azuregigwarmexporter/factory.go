@@ -10,7 +10,9 @@ import (
 	"errors"
 
 	"go.opentelemetry.io/collector/component"
+	"go.opentelemetry.io/collector/config/configretry"
 	"go.opentelemetry.io/collector/exporter"
+	"go.opentelemetry.io/collector/exporter/exporterhelper"
 )
 
 var (
@@ -40,7 +42,10 @@ func NewFactory() exporter.Factory {
 
 // createDefaultConfig creates the default exporter configuration.
 func (f *factory) createDefaultConfig() component.Config {
-	return &Config{}
+	return &Config{
+		QueueConfig: exporterhelper.NewDefaultQueueConfig(),
+		RetryConfig: configretry.NewDefaultBackOffConfig(),
+	}
 }
 
 // createLogsExporter creates a logs exporter based on the config.
@@ -55,8 +60,17 @@ func (f *factory) createLogsExporter(ctx context.Context, set exporter.Settings,
 		return nil, err
 	}
 
-	// Return the exporter directly without using exporterhelper
-	return exp, nil
+	// Wrap with exporterhelper to enable queuing and retries
+	return exporterhelper.NewLogs(
+		ctx,
+		set,
+		cfg,
+		exp.pushLogs,
+		exporterhelper.WithRetry(cfg.RetryConfig),
+		exporterhelper.WithQueue(cfg.QueueConfig),
+		exporterhelper.WithStart(exp.start),
+		exporterhelper.WithShutdown(exp.shutdown),
+	)
 }
 
 // createTracesExporter creates a traces exporter based on the config.
@@ -71,6 +85,15 @@ func (f *factory) createTracesExporter(ctx context.Context, set exporter.Setting
 		return nil, err
 	}
 
-	// Return the exporter directly without using exporterhelper
-	return exp, nil
+	// Wrap with exporterhelper to enable queuing and retries
+	return exporterhelper.NewTraces(
+		ctx,
+		set,
+		cfg,
+		exp.pushTraces,
+		exporterhelper.WithRetry(cfg.RetryConfig),
+		exporterhelper.WithQueue(cfg.QueueConfig),
+		exporterhelper.WithStart(exp.start),
+		exporterhelper.WithShutdown(exp.shutdown),
+	)
 }

@@ -191,10 +191,22 @@ func (c *GenevaClient) UploadLogsSync(data []byte) error {
 	defer C.geneva_batches_free(batches)
 
 	n := int(C.geneva_batches_len(batches))
+	errBuf := make([]byte, 1024) // Buffer for error messages
 	for i := range n {
-		res := C.geneva_upload_batch_sync(c.handle, batches, C.size_t(i))
-		if err := mapGenevaError(res); err != nil {
-			return err
+		res := C.geneva_upload_batch_sync(
+			c.handle,
+			batches,
+			C.size_t(i),
+			(*C.char)(unsafe.Pointer(&errBuf[0])),
+			C.size_t(len(errBuf)),
+		)
+		if res != C.GENEVA_SUCCESS {
+			// Extract error message from buffer
+			errMsg := C.GoString((*C.char)(unsafe.Pointer(&errBuf[0])))
+			if errMsg != "" {
+				return fmt.Errorf("failed to upload spans batch to Geneva Warm: %s", errMsg)
+			}
+			return mapGenevaError(res)
 		}
 	}
 	return nil
@@ -271,8 +283,22 @@ func (c *GenevaClient) UploadBatch(b *EncodedBatches, idx int) error {
 	if b == nil || b.handle == nil {
 		return errors.New("nil batches")
 	}
-	res := C.geneva_upload_batch_sync(c.handle, b.handle, C.size_t(idx))
-	return mapGenevaError(res)
+	errBuf := make([]byte, 1024)
+	res := C.geneva_upload_batch_sync(
+		c.handle,
+		b.handle,
+		C.size_t(idx),
+		(*C.char)(unsafe.Pointer(&errBuf[0])),
+		C.size_t(len(errBuf)),
+	)
+	if res != C.GENEVA_SUCCESS {
+		errMsg := C.GoString((*C.char)(unsafe.Pointer(&errBuf[0])))
+		if errMsg != "" {
+			return fmt.Errorf("geneva upload failed: %s", errMsg)
+		}
+		return mapGenevaError(res)
+	}
+	return nil
 }
 
 // UploadLogs uploads log data to Geneva (synchronous)

@@ -83,10 +83,14 @@ size_t geneva_batches_len(const EncodedBatchesHandle* batches);
 
 /* 3) Upload a single batch by index (synchronous).
       - On success returns GENEVA_SUCCESS.
-      - On failure returns an error code. */
+      - On failure returns an error code and writes error message to err_msg_out if provided.
+      - err_msg_out: buffer to receive error message (optional, can be NULL)
+      - err_msg_len: size of err_msg_out buffer */
 GenevaError geneva_upload_batch_sync(GenevaClientHandle* handle,
                                      const EncodedBatchesHandle* batches,
-                                     size_t index);
+                                     size_t index,
+                                     char* err_msg_out,
+                                     size_t err_msg_len);
 
 
 /* 5) Free the batches handle. */

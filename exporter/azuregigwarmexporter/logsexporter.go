@@ -8,9 +8,9 @@ package azuregigwarmexporter
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"go.opentelemetry.io/collector/component"
-	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/exporter"
 	cgogeneva "go.opentelemetry.io/collector/exporter/azuregigwarmexporter/internal/cgo"
 	"go.opentelemetry.io/collector/pdata/plog"
@@ -26,8 +26,8 @@ type logsExporter struct {
 	logger *zap.Logger
 }
 
-var _ consumer.Logs = (*logsExporter)(nil)
-var _ component.Component = (*logsExporter)(nil)
+// logsExporter no longer needs to implement consumer.Logs or component.Component
+// because exporterhelper handles those interfaces
 
 // newLogsExporter creates a new GigWarm logs exporter.
 func newLogsExporter(_ context.Context, set exporter.Settings, cfg *Config) (*logsExporter, error) {
@@ -90,8 +90,8 @@ func (e *logsExporter) shutdown(_ context.Context) error {
 	return nil
 }
 
-// consumeLogs implements consumer.ConsumeLogsFunc signature and sends logs via Rust FFI.
-func (e *logsExporter) consumeLogs(_ context.Context, ld plog.Logs) error {
+// pushLogs implements the push function for exporterhelper and sends logs via Rust FFI.
+func (e *logsExporter) pushLogs(_ context.Context, ld plog.Logs) error {
 	// Marshal to OTLP ExportLogsServiceRequest protobuf bytes
 	req := plogotlp.NewExportRequestFromLogs(ld)
 	data, err := req.MarshalProto()
@@ -108,11 +108,28 @@ func (e *logsExporter) consumeLogs(_ context.Context, ld plog.Logs) error {
 	defer batches.Close()
 
 	n := batches.Len()
+
+	// Upload batches concurrently for better throughput
+	errChan := make(chan error, n)
+	var wg sync.WaitGroup
+
 	for i := 0; i < n; i++ {
-		if err := e.client.UploadBatch(batches, i); err != nil {
-			e.logger.Error("Failed to upload batch to Geneva Warm", zap.Int("batch_index", i), zap.Error(err))
-			return fmt.Errorf("failed to upload logs batch to Geneva Warm: %w", err)
-		}
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			if err := e.client.UploadBatch(batches, index); err != nil {
+				e.logger.Error("Failed to upload batch to Geneva Warm", zap.Int("batch_index", index), zap.Error(err))
+				errChan <- fmt.Errorf("failed to upload logs batch %d to Geneva Warm: %w", index, err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errChan)
+
+	// Check for any errors
+	if err := <-errChan; err != nil {
+		return err
 	}
 
 	e.logger.Debug("Successfully uploaded logs to Geneva Warm",
@@ -122,22 +139,5 @@ func (e *logsExporter) consumeLogs(_ context.Context, ld plog.Logs) error {
 	return nil
 }
 
-// Capabilities implements consumer.Logs.
-func (e *logsExporter) Capabilities() consumer.Capabilities {
-	return consumer.Capabilities{MutatesData: false}
-}
-
-// ConsumeLogs implements consumer.Logs.
-func (e *logsExporter) ConsumeLogs(ctx context.Context, ld plog.Logs) error {
-	return e.consumeLogs(ctx, ld)
-}
-
-// Start implements component.Component.
-func (e *logsExporter) Start(ctx context.Context, host component.Host) error {
-	return e.start(ctx, host)
-}
-
-// Shutdown implements component.Component.
-func (e *logsExporter) Shutdown(ctx context.Context) error {
-	return e.shutdown(ctx)
-}
+// These interface methods are no longer needed because exporterhelper wraps the exporter
+// and handles the consumer.Logs and component.Component interfaces
