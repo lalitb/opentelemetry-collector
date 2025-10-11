@@ -43,8 +43,9 @@ func NewFactory() exporter.Factory {
 // createDefaultConfig creates the default exporter configuration.
 func (f *factory) createDefaultConfig() component.Config {
 	return &Config{
-		QueueConfig: exporterhelper.NewDefaultQueueConfig(),
-		RetryConfig: configretry.NewDefaultBackOffConfig(),
+		QueueConfig:      exporterhelper.NewDefaultQueueConfig(),
+		RetryConfig:      configretry.NewDefaultBackOffConfig(),
+		BatchRetryConfig: NewDefaultBatchRetryConfig(),
 	}
 }
 

@@ -17,6 +17,7 @@ package azuregigwarmexporter // import "go.opentelemetry.io/collector/exporter/a
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configretry"
@@ -71,8 +72,61 @@ type Config struct {
 	// RetryConfig configures retry behavior for failed exports
 	RetryConfig configretry.BackOffConfig `mapstructure:"retry_on_failure"`
 
+	// BatchRetryConfig configures retry behavior for individual batch uploads
+	BatchRetryConfig BatchRetryConfig `mapstructure:"batch_retry"`
+
 	// prevent unkeyed literal initialization
 	_ struct{}
+}
+
+// BatchRetryConfig configures retry behavior for individual batch uploads within a single export request.
+// This provides fine-grained retry for failed batches without re-encoding and re-uploading successful batches.
+type BatchRetryConfig struct {
+	// Enabled indicates whether batch-level retry is enabled (default: true)
+	Enabled bool `mapstructure:"enabled"`
+	// MaxRetries is the maximum number of retry attempts per batch (default: 3)
+	MaxRetries int `mapstructure:"max_retries"`
+	// InitialInterval is the initial backoff interval (default: 100ms)
+	InitialInterval string `mapstructure:"initial_interval"`
+	// MaxInterval is the maximum backoff interval (default: 5s)
+	MaxInterval string `mapstructure:"max_interval"`
+	// Multiplier is the backoff multiplier (default: 2.0)
+	Multiplier float64 `mapstructure:"multiplier"`
+}
+
+// NewDefaultBatchRetryConfig creates a BatchRetryConfig with default values
+func NewDefaultBatchRetryConfig() BatchRetryConfig {
+	return BatchRetryConfig{
+		Enabled:         true,
+		MaxRetries:      3,
+		InitialInterval: "100ms",
+		MaxInterval:     "5s",
+		Multiplier:      2.0,
+	}
+}
+
+// GetInitialInterval parses and returns the initial interval duration
+func (c *BatchRetryConfig) GetInitialInterval() time.Duration {
+	if c.InitialInterval == "" {
+		return 100 * time.Millisecond
+	}
+	d, err := time.ParseDuration(c.InitialInterval)
+	if err != nil {
+		return 100 * time.Millisecond
+	}
+	return d
+}
+
+// GetMaxInterval parses and returns the max interval duration
+func (c *BatchRetryConfig) GetMaxInterval() time.Duration {
+	if c.MaxInterval == "" {
+		return 5 * time.Second
+	}
+	d, err := time.ParseDuration(c.MaxInterval)
+	if err != nil {
+		return 5 * time.Second
+	}
+	return d
 }
 
 var _ component.Config = (*Config)(nil)

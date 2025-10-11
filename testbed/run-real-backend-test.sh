@@ -332,7 +332,7 @@ case "$TEST_TYPE" in
     trace|traces)
         if [ "$USE_COUNT_MODE" = true ]; then
             telemetrygen traces \
-                --otlp-endpoint localhost:4317 \
+                --otlp-endpoint 127.0.0.1:4317 \
                 --otlp-insecure \
                 --rate $ITEMS_PER_SEC \
                 --traces $TOTAL_ITEMS \
@@ -341,7 +341,7 @@ case "$TEST_TYPE" in
                 --status-code Ok
         else
             telemetrygen traces \
-                --otlp-endpoint localhost:4317 \
+                --otlp-endpoint 127.0.0.1:4317 \
                 --otlp-insecure \
                 --rate $ITEMS_PER_SEC \
                 --duration ${DURATION}s \
@@ -353,7 +353,7 @@ case "$TEST_TYPE" in
     log|logs)
         if [ "$USE_COUNT_MODE" = true ]; then
             telemetrygen logs \
-                --otlp-endpoint localhost:4317 \
+                --otlp-endpoint 127.0.0.1:4317 \
                 --otlp-insecure \
                 --rate $ITEMS_PER_SEC \
                 --logs $TOTAL_ITEMS \
@@ -362,7 +362,7 @@ case "$TEST_TYPE" in
                 --body "Load test message from GigWarm testbed"
         else
             telemetrygen logs \
-                --otlp-endpoint localhost:4317 \
+                --otlp-endpoint 127.0.0.1:4317 \
                 --otlp-insecure \
                 --rate $ITEMS_PER_SEC \
                 --duration ${DURATION}s \

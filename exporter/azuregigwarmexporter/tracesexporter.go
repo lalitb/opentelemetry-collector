@@ -8,7 +8,9 @@ package azuregigwarmexporter
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/exporter"
@@ -91,7 +93,7 @@ func (e *tracesExporter) shutdown(_ context.Context) error {
 }
 
 // pushTraces implements the push function for exporterhelper and sends traces via Rust FFI.
-func (e *tracesExporter) pushTraces(_ context.Context, td ptrace.Traces) error {
+func (e *tracesExporter) pushTraces(ctx context.Context, td ptrace.Traces) error {
 	// Marshal to OTLP ExportTraceServiceRequest protobuf bytes
 	req := ptraceotlp.NewExportRequestFromTraces(td)
 	data, err := req.MarshalProto()
@@ -109,26 +111,8 @@ func (e *tracesExporter) pushTraces(_ context.Context, td ptrace.Traces) error {
 
 	n := batches.Len()
 
-	// Upload batches concurrently for better throughput
-	errChan := make(chan error, n)
-	var wg sync.WaitGroup
-
-	for i := 0; i < n; i++ {
-		wg.Add(1)
-		go func(index int) {
-			defer wg.Done()
-			if err := e.client.UploadBatch(batches, index); err != nil {
-				e.logger.Error("Failed to upload batch to Geneva Warm", zap.Int("batch_index", index), zap.Error(err))
-				errChan <- fmt.Errorf("failed to upload spans batch %d to Geneva Warm: %w", index, err)
-			}
-		}(i)
-	}
-
-	wg.Wait()
-	close(errChan)
-
-	// Check for any errors
-	if err := <-errChan; err != nil {
+	// Upload batches with retry logic
+	if err := e.uploadBatchesWithRetry(ctx, batches, n); err != nil {
 		return err
 	}
 
@@ -137,6 +121,139 @@ func (e *tracesExporter) pushTraces(_ context.Context, td ptrace.Traces) error {
 		zap.Int("batches", n),
 	)
 	return nil
+}
+
+// uploadBatchesWithRetry uploads batches concurrently and retries failed batches
+func (e *tracesExporter) uploadBatchesWithRetry(ctx context.Context, batches *cgogeneva.EncodedBatches, n int) error {
+	type batchResult struct {
+		index int
+		err   error
+	}
+
+	resultChan := make(chan batchResult, n)
+	var wg sync.WaitGroup
+
+	// First attempt: upload all batches concurrently
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(index int) {
+			defer wg.Done()
+			if err := e.uploadBatchWithRetry(ctx, batches, index); err != nil {
+				resultChan <- batchResult{index: index, err: err}
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(resultChan)
+
+	// Collect failed batch indices
+	var failedBatches []batchResult
+	for result := range resultChan {
+		failedBatches = append(failedBatches, result)
+	}
+
+	// If any batches failed after retries, return error
+	if len(failedBatches) > 0 {
+		e.logger.Error("Failed to upload batches after retries",
+			zap.Int("failed_count", len(failedBatches)),
+			zap.Int("total_batches", n),
+		)
+		// Return the first error
+		return failedBatches[0].err
+	}
+
+	return nil
+}
+
+// uploadBatchWithRetry uploads a single batch with exponential backoff retry
+func (e *tracesExporter) uploadBatchWithRetry(ctx context.Context, batches *cgogeneva.EncodedBatches, index int) error {
+	if !e.cfg.BatchRetryConfig.Enabled {
+		// Batch retry disabled, upload once
+		if err := e.client.UploadBatch(batches, index); err != nil {
+			e.logger.Error("Failed to upload batch to Geneva Warm",
+				zap.Int("batch_index", index),
+				zap.Error(err),
+			)
+			return fmt.Errorf("failed to upload spans batch %d to Geneva Warm: %w", index, err)
+		}
+		return nil
+	}
+
+	// Batch retry enabled
+	maxRetries := e.cfg.BatchRetryConfig.MaxRetries
+	if maxRetries < 0 {
+		maxRetries = 3 // Default
+	}
+
+	initialInterval := e.cfg.BatchRetryConfig.GetInitialInterval()
+	maxInterval := e.cfg.BatchRetryConfig.GetMaxInterval()
+	multiplier := e.cfg.BatchRetryConfig.Multiplier
+	if multiplier <= 0 {
+		multiplier = 2.0 // Default
+	}
+
+	var lastErr error
+	backoff := initialInterval
+
+	for attempt := 0; attempt <= maxRetries; attempt++ {
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
+		// Attempt upload
+		err := e.client.UploadBatch(batches, index)
+		if err == nil {
+			// Success
+			if attempt > 0 {
+				e.logger.Info("Batch upload succeeded after retry",
+					zap.Int("batch_index", index),
+					zap.Int("attempt", attempt+1),
+				)
+			}
+			return nil
+		}
+
+		lastErr = err
+		e.logger.Warn("Batch upload failed, will retry",
+			zap.Int("batch_index", index),
+			zap.Int("attempt", attempt+1),
+			zap.Int("max_attempts", maxRetries+1),
+			zap.Duration("backoff", backoff),
+			zap.Error(err),
+		)
+
+		// If this was the last attempt, don't sleep
+		if attempt == maxRetries {
+			break
+		}
+
+		// Sleep with backoff
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+
+		// Calculate next backoff with exponential increase
+		backoff = time.Duration(float64(backoff) * multiplier)
+		if backoff > maxInterval {
+			backoff = maxInterval
+		}
+		// Add jitter (±10%)
+		jitter := float64(backoff) * 0.1 * (2*math.Float64frombits(uint64(time.Now().UnixNano())) - 1)
+		backoff += time.Duration(jitter)
+	}
+
+	e.logger.Error("Failed to upload batch after all retries",
+		zap.Int("batch_index", index),
+		zap.Int("attempts", maxRetries+1),
+		zap.Error(lastErr),
+	)
+	return fmt.Errorf("failed to upload spans batch %d after %d attempts: %w", index, maxRetries+1, lastErr)
 }
 
 // These interface methods are no longer needed because exporterhelper wraps the exporter

@@ -6,9 +6,9 @@ receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: 127.0.0.1:4317
+        endpoint: 0.0.0.0:4317
       http:
-        endpoint: 127.0.0.1:4318
+        endpoint: 0.0.0.0:4318
 
 processors:
   batch:
@@ -31,11 +31,26 @@ exporters:
     cert_path: "${GENEVA_CERT_PATH}"
     cert_password: "${GENEVA_CERT_PASSWORD}"
 
-  # Debug exporter to verify data locally
-  debug:
-    verbosity: detailed
-    sampling_initial: 10
-    sampling_thereafter: 100
+    # Sending queue configuration (in-memory queue before export)
+    sending_queue:
+      enabled: true
+      num_consumers: 10      # Number of concurrent workers
+      queue_size: 5000       # Max number of batches in queue
+
+    # Retry configuration (exponential backoff on export failures)
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s   # First retry after 5s
+      max_interval: 30s      # Max backoff interval
+      max_elapsed_time: 300s # Give up after 5 minutes
+
+    # Batch-level retry (retries individual failed batches without re-encoding)
+    batch_retry:
+      enabled: true          # Enable batch-level retry
+      max_retries: 3         # Max retry attempts per batch
+      initial_interval: 100ms # Initial backoff interval
+      max_interval: 5s       # Max backoff interval
+      multiplier: 2.0        # Backoff multiplier
 
 service:
   pipelines:
